@@ -23,22 +23,29 @@ class ResearchOrchestrator:
         self.num_results = num_results
         self.session_dir = None
         self.status_callback = None
+        self.run_started_at: Optional[datetime] = None
 
     def set_status_callback(self, callback):
         """Set callback function for status updates to UI"""
         self.status_callback = callback
 
+    def _get_local_now(self) -> datetime:
+        """Return current local time with timezone information."""
+        return datetime.now().astimezone()
+
     def log_status(self, message: str, level: str = "info"):
         """Log status message with timestamp"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted_msg = f"[{timestamp}] {message}"
+        local_time = self._get_local_now()
+        formatted_timestamp = local_time.strftime("%H:%M:%S %Z%z").strip()
+        formatted_msg = f"[{formatted_timestamp}] {message}"
         print(formatted_msg)
         if self.status_callback:
             self.status_callback(formatted_msg, level)
 
     def create_session_directory(self) -> Path:
         """Create timestamped session directory for storing research data"""
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        base_time = self.run_started_at or self._get_local_now()
+        timestamp = base_time.strftime("%Y-%m-%d_%H-%M-%S%z")
         session_path = Path(f"research_sessions/{timestamp}")
         session_path.mkdir(parents=True, exist_ok=True)
         self.session_dir = session_path
@@ -105,6 +112,7 @@ class ResearchOrchestrator:
         3. Collects and saves results
         4. Generates final report
         """
+        self.run_started_at = self._get_local_now()
         self.log_status("=" * 80)
         self.log_status("🚀 STARTING RESEARCH ORCHESTRATOR", "info")
         self.log_status("=" * 80)
@@ -151,7 +159,8 @@ class ResearchOrchestrator:
             "session_dir": str(session_dir),
             "queries": refined_queries,
             "results": research_results,
-            "report": final_report
+            "report": final_report,
+            "run_timestamp": (self.run_started_at or self._get_local_now()).isoformat(timespec="seconds")
         }
 
     async def _refine_queries(self, user_query: str) -> Dict[str, str]:
@@ -162,8 +171,11 @@ class ResearchOrchestrator:
         """
         self.log_status("🤔 Analyzing query and generating search variations...")
 
+        run_time_iso = (self.run_started_at or self._get_local_now()).isoformat(timespec="seconds")
         refinement_prompt = f"""
 You are a search query optimization expert. Given the user's research query, generate THREE search queries:
+
+Current local date & time: {run_time_iso}
 
 1. PRIMARY: Optimize the user query for Google Search (via Serper API) - make it clear, specific, and likely to return highly relevant results
 2. ORTHOGONAL_1: A related but different angle - explore a complementary aspect or perspective
@@ -361,7 +373,12 @@ Focus on extracting key information, URLs, and metadata. Be efficient and thorou
             )
 
             async with ClaudeSDKClient(options=options) as client:
-                fetch_prompt = f"Fetch and extract the main text content from this URL: {url}\nReturn ONLY the main text content, no formatting or commentary."
+                run_time_iso = (self.run_started_at or self._get_local_now()).isoformat(timespec="seconds")
+                fetch_prompt = (
+                    f"Current local date & time: {run_time_iso}\n"
+                    f"Fetch and extract the main text content from this URL: {url}\n"
+                    "Return ONLY the main text content, no formatting or commentary."
+                )
 
                 await client.query(fetch_prompt)
 
@@ -408,8 +425,13 @@ Focus on extracting key information, URLs, and metadata. Be efficient and thorou
             }
             research_summary["results_summary"].append(summary)
 
+        run_time_display = (self.run_started_at or self._get_local_now()).strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        run_time_iso = (self.run_started_at or self._get_local_now()).isoformat(timespec="seconds")
+
         report_prompt = f"""
 You are a research analyst. Generate a comprehensive markdown research report based on the following data:
+
+Current local date & time: {run_time_iso}
 
 ORIGINAL QUERY: {original_query}
 
@@ -455,7 +477,7 @@ Generate a professional markdown report with the following structure:
 [Complete list of all URLs organized by category]
 
 ---
-*Report generated on {datetime.now().strftime("%Y-%m-%d at %H:%M:%S")}*
+*Report generated on {run_time_display}*
 """
 
         options = ClaudeAgentOptions(

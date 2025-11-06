@@ -83,7 +83,7 @@ def add_status_log(message: str, level: str = "info"):
     st.session_state.status_logs.append({
         "message": message,
         "level": level,
-        "timestamp": datetime.now()
+        "timestamp": datetime.now().astimezone()
     })
 
 
@@ -199,6 +199,13 @@ def main():
             st.markdown("---")
             st.markdown("### 📁 Current Session")
             st.code(st.session_state.current_research["session_dir"])
+            run_timestamp = st.session_state.current_research.get("run_timestamp")
+            if run_timestamp:
+                try:
+                    run_dt = datetime.fromisoformat(run_timestamp)
+                    st.caption(f"Started: {run_dt.strftime('%Y-%m-%d %H:%M:%S %Z%z')}")
+                except ValueError:
+                    st.caption(f"Started: {run_timestamp}")
 
     # Main content area with two columns
     col1, col2 = st.columns([1, 1])
@@ -291,12 +298,19 @@ def main():
 
                 # Download button for report
                 report_md = result["report"]
+                run_timestamp_iso = result.get("run_timestamp")
+                try:
+                    run_dt = datetime.fromisoformat(run_timestamp_iso) if run_timestamp_iso else datetime.now().astimezone()
+                except (TypeError, ValueError):
+                    run_dt = datetime.now().astimezone()
+                download_ts = run_dt.strftime("%Y%m%d_%H%M%S%z")
                 st.download_button(
                     label="⬇️ Download Report (Markdown)",
                     data=report_md,
-                    file_name=f"research_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                    file_name=f"research_report_{download_ts}.md",
                     mime="text/markdown"
                 )
+                st.caption(f"Report reflects research run started at {run_dt.strftime('%Y-%m-%d %H:%M:%S %Z%z')}")
 
         with tab2:
             st.subheader("Query Refinement Analysis")
